@@ -129,14 +129,15 @@ En = 2*En_bar;
 % Note: the SNR in each subchannel is given by:
 SNR_n = En_bar .* gn(used_tones);
 
-if (debug_snr)
+if (debug && debug_snr)
     figure
-    plot(10*log10(SNR_n))
+    plot(used_tones, 10*log10(SNR_n))
     hold on
     plot(10*log10(SNRmfb) * ones(N, 1), '--r')
     xlabel('Tone (n)')
     ylabel('SNR_n (db)')
     set(gca,'XLim',[1 N]);
+    legend('SNR_n', 'SNRmfb');
     drawnow
 end
 
@@ -257,7 +258,9 @@ if (debug && debug_tx_energy)
     fprintf('Tx Energy   |\t');
     fprintf('Nominal     |\t');
 end
-fprintf('SNR (Time)  |\t');
+if (debug && debug_snr)
+    fprintf('SNR (Time)  |\t');
+end
 fprintf('RMS EVM     |\t');
 fprintf('Pe_bar      |\t');
 fprintf('nErrors     |\t');
@@ -327,9 +330,11 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
     % SNR in time-domain:
     SNR_time = 10*log10(mean(abs(y).^2) / mean(abs(nn).^2));
 
-    fprintf('%12g|\t', SNR_time);
+    if (debug && debug_snr)
+        fprintf('%12g|\t', SNR_time);
+    end
 
-    if (debug_psd)
+    if (debug && debug_psd)
         step(SpecAnalyzer, y);
     end
     %% Synchronization

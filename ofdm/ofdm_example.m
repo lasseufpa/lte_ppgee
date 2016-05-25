@@ -8,14 +8,18 @@ debug_tone          = 16; % Tone whose constellation is debugged
 debug_Pe            = 1;  % Debug error probabilities
 debug_tx_energy     = 0;  % Debug transmit energy
 debug_snr           = 0;  % Debug SNRs
+debug_psd           = 0;  % Debug the Rx signal PSD
 
 %% Parameters
-alpha      = 1;         % Increase FFT size by this factor preserving Fs
-% Note: this is useful to evaluate the DMT performance as N -> infty
+lteChoice  = 5;
+% 1 -> LTE 1.4
+% 2 -> LTE 3
+% 3 -> LTE 5
+% 4 -> LTE 10
+% 5 -> LTE 15
+% 6 -> LTE 20
 Px         = 1e-3;      % Transmit Power (W)
 N0_over_2  = 1e-14;     % Noise PSD (W/Hz/dim) and variance per dimension
-N          = 1024;      % FFT size and the number of used real dimensions
-nu         = 80;        % Cyclic Prefix Length
 delta_f    = 15e3;      % Subchannel bandwidth
 nSymbols   = 1e3;       % Number of DMT symbols per transmission iteration
 subchanOrder = 16;       % Modulation order adopted for all subchannels
@@ -25,9 +29,22 @@ maxNumErrs   = 1e5;
 maxNumDmtSym = 1e12;
 
 %% Derived computations:
-N         = N*alpha;
-delta_f   = delta_f/alpha;
-Fs        = N * delta_f;
+
+% Get OFDM parameters that depend on the LTE choice
+[ lte ] = lteOfdmParameters( lteChoice );
+N       = lte.N;
+N_used  = lte.nUsedSubcarriers;
+nu      = lte.nu;
+Fs      = lte.fs;
+
+% Index of the subchannels that should be loaded:
+used_tones = [ 2:(N_used/2), (N - N_used/2):N].';
+% Note DC is not used and only the bands adjcent to DC are used. Recall the
+% FFT order is such that the first N/2 + 1 tones represent the "positive
+% spectrum" (0 to pi) and the last N/2 -1 tones represent the negative half
+% of the baseband-centered spectrum (pi to 2*pi).
+
+
 nDim      = 2*(N + nu);     % Total number of real dimensions per OFDM
 % symbol
 Ts        = 1 / Fs;
@@ -42,6 +59,8 @@ Ex_bar    = Ex / nDim;      % Energy per real dimension
 %% System Objects
 
 EVM = comm.EVM;
+EVM.AveragingDimensions = [1 1];
+SpecAnalyzer = dsp.SpectrumAnalyzer('SampleRate',lte.fs);
 
 %% Pulse Response
 
@@ -79,23 +98,36 @@ FEQ = 1 ./ (H_freq .* phaseShift);
 
 gn = (abs(H).^2) / N0_over_2;
 
-%% Bit and Energy loading per subchannel
+%% Bit load and
 
 % Vector of bits per dimension in each subchannel (not each subchannel is
-% two-dimensional):
-bn_bar = log2(subchanOrder) * ones(N,1);
+% two-dimensional) and all subchannels are loaded with the same number of
+% bits.
+bn_bar = log2(subchanOrder) * ones(N_used,1);
 % Vector of bits per subchannel
 bn = 2*bn_bar;
 
-% Energy per dimension in each subchannel (flat energy load):
-En_bar = Ex_bar * ones(N,1);
+%% Energy load
+
+% 1) What is the budget of energy available for each OFDM symbol? Ex
+% 2) How many subchannels are effectively loaded with energy? N_used
+% Thus, assuming all subchannels are loaded with an equal amount of energy,
+% the energy load per subchannel is:
+En_per_used_subchannel = (Ex / N_used);
+% Then, since each subchannel is two-dimensional in OFDM, the energy per
+% dimension in each n-th subchannel becomes:
+En_bar = (En_per_used_subchannel/2) * ones(N_used,1);
+% Finally, since the CP uses part of the transmit energy, the energy per
+% subchannel has to discount the CP repetition so that the transmit energy
+% budget is obeyed:
+En_bar = (N/(N+nu)) * En_bar;
 % Energy per two-dimensional subchannel:
 En = 2*En_bar;
 
 %% SNR per subchannel
 
 % Note: the SNR in each subchannel is given by:
-SNR_n = En_bar .* gn;
+SNR_n = En_bar .* gn(used_tones);
 
 if (debug_snr)
     figure
@@ -185,9 +217,9 @@ end
 
 %% Look-up table for each subchannel indicating the corresponding modem
 
-modem_n = zeros(N, 1);
+modem_n = zeros(N_used, 1);
 
-for k = 1:N
+for k = 1:N_used
     iModem = find(twoDim_const_orders == modOrder(k));
     if (iModem)
         modem_n(k) = iModem;
@@ -196,9 +228,9 @@ end
 
 %% Energy loading (constellation scaling factors)
 
-Scale_n = zeros(N, 1);
+Scale_n = zeros(N_used, 1);
 
-for k = 1:N
+for k = 1:N_used
     Scale_n(k) = modnorm(...
         modulator{modem_n(k)}.constellation,...
         'avpow', En(k));
@@ -210,9 +242,9 @@ fprintf('\n---------------------- Monte Carlo --------------------- \n\n');
 
 % Preallocate
 X          = zeros(N, nSymbols);
-tx_symbols = zeros(N, nSymbols);
-rx_symbols = zeros(N, nSymbols);
-sym_err_n  = zeros(N, 1);
+tx_symbols = zeros(N_used, nSymbols);
+rx_symbols = zeros(N_used, nSymbols);
+sym_err_n  = zeros(N_used, 1);
 
 numErrs = 0; numDmtSym = 0;
 
@@ -239,15 +271,16 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
     iTransmission = iTransmission + 1;
     
     % Random Symbol generation
-    for k = 1:N
-        tx_symbols(k, :) = randi(modOrder(k), 1, nSymbols) - 1;
+    for i = 1:N_used
+        tx_symbols(i, :) = randi(modOrder(i), 1, nSymbols) - 1;
     end
     
     %% Constellation Encoding
-    for k = 1:N
-        if (modem_n(k) > 0)
-            X(k, :) = Scale_n(k) * ...
-                modulator{modem_n(k)}.modulate(tx_symbols(k, :));
+    for i = 1:N_used
+        k = used_tones(i);
+        if (modem_n(i) > 0)
+            X(k, :) = Scale_n(i) * ...
+                modulator{modem_n(i)}.modulate(tx_symbols(i, :));
         end
     end
     
@@ -281,8 +314,8 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
         fprintf('%12g|\t',Ex);
     end
     
-    %% Channel    
-    y = conv(u, p);    
+    %% Channel
+    y = conv(u, p);
     
     %% Noise
     
@@ -296,6 +329,9 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
     
     fprintf('%12g|\t', SNR_time);
     
+    if (debug_psd)
+        step(SpecAnalyzer, y);
+    end
     %% Synchronization
     % Note: synchronization introduces a phase shift that should be taken
     % into account in the FEQ.
@@ -320,16 +356,17 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
     Z = diag(FEQ) * Y;
     
     %% EVM
-    RMSEVM = step(EVM, X(:), Z(:));
+    RMSEVM = step(EVM, X(used_tones,:), Z(used_tones, :));
     
     fprintf('%12g|\t', RMSEVM);
     
     %% Constellation decoding (decision)
     
-    for k = 1:N
-        if (modem_n(k) > 0)
-            rx_symbols(k, :) = demodulator{modem_n(k)}.demodulate(...
-                (1/Scale_n(k)) * Z(k, :));
+    for i = 1:N_used
+        k = used_tones(i);
+        if (modem_n(i) > 0)
+            rx_symbols(i, :) = demodulator{modem_n(i)}.demodulate(...
+                (1/Scale_n(i)) * Z(k, :));
         end
     end
     

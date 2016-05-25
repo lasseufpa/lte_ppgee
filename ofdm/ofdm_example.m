@@ -137,7 +137,7 @@ if (debug_snr)
     xlabel('Tone (n)')
     ylabel('SNR_n (db)')
     set(gca,'XLim',[1 N]);
-    drawnow 
+    drawnow
 end
 
 %% Gap to capacity, Multi-channel SNR and Channel Capacity
@@ -210,7 +210,7 @@ demodulator = cell(length(modOrder), 1);
 % Configure 2-dimensional modems for each distinct bit loading:
 for i = 1:length(twoDim_const_orders)
     M = twoDim_const_orders(i);
-    
+
     modulator{i} = modem.qammod('M', M, 'SymbolOrder', 'Gray');
     demodulator{i} = modem.qamdemod('M', M, 'SymbolOrder', 'Gray');
 end
@@ -269,12 +269,12 @@ iTransmission = 0;
 
 while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
     iTransmission = iTransmission + 1;
-    
+
     % Random Symbol generation
     for i = 1:N_used
         tx_symbols(i, :) = randi(modOrder(i), 1, nSymbols) - 1;
     end
-    
+
     %% Constellation Encoding
     for i = 1:N_used
         k = used_tones(i);
@@ -283,19 +283,19 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
                 modulator{modem_n(i)}.modulate(tx_symbols(i, :));
         end
     end
-    
+
     %% Modulation
-    
+
     x = sqrt(N) * ifft(X, N); % Orthonormal IFFT
-    
+
     %% Cyclic extension
-    
+
     x_ext = [x(N-nu+1:N, :); x];
-    
+
     %% Parallel to serial
-    
+
     u = x_ext(:);
-    
+
     if (debug && debug_tx_energy)
         % Note: "u" should become samples leaving the DAC. In that case,
         % they would repreent coefficients of the sampling theorem's sinc
@@ -304,7 +304,7 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
         % which is the normalized IDFT. Hence, the energy in x at this
         % point is still given simply by:
         tx_total_energy = norm(u).^2;
-        
+
         % A Ts factor should multiply the norm if u was a vector of samples
         % out of the DAC, but in this case there would be a scaling factor
         % introduced by the DAC anti-imaging LPF. Both would cancel each
@@ -313,55 +313,55 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
             tx_total_energy / nSymbols);
         fprintf('%12g|\t',Ex);
     end
-    
+
     %% Channel
     y = conv(u, p);
-    
+
     %% Noise
-    
+
     nn = sqrt(N0_over_2) * (randn(length(y),1) + 1j*randn(length(y),1));
-    
+
     % Add noise
     y = y + nn;
-    
+
     % SNR in time-domain:
     SNR_time = 10*log10(mean(abs(y).^2) / mean(abs(nn).^2));
-    
+
     fprintf('%12g|\t', SNR_time);
-    
+
     if (debug_psd)
         step(SpecAnalyzer, y);
     end
     %% Synchronization
     % Note: synchronization introduces a phase shift that should be taken
     % into account in the FEQ.
-    
+
     nRxSamples = (N+nu)*nSymbols;
     y_sync     = y((n0 + 1):(n0 + nRxSamples));
-    
+
     %% Serial to Parallel
-    
+
     y_sliced = reshape(y_sync, N + nu, nSymbols);
-    
+
     %% Extension removal
-    
+
     y_no_ext = y_sliced(nu + 1:end, :);
-    
+
     %% Regular Demodulation (without decision feedback)
-    
+
     % FFT
     Y = (1/sqrt(N)) * fft(y_no_ext, N); % Orthonormal FFT
-    
+
     % FEQ - One-tap Frequency Equalizer
     Z = diag(FEQ) * Y;
-    
+
     %% EVM
     RMSEVM = step(EVM, X(used_tones,:), Z(used_tones, :));
-    
+
     fprintf('%12g|\t', RMSEVM);
-    
+
     %% Constellation decoding (decision)
-    
+
     for i = 1:N_used
         k = used_tones(i);
         if (modem_n(i) > 0)
@@ -369,23 +369,23 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
                 (1/Scale_n(i)) * Z(k, :));
         end
     end
-    
+
     % Symbol error count
     sym_err_n = sym_err_n + symerr(tx_symbols, rx_symbols, 'row-wise');
     % Symbol error rate per subchannel
     ser_n     = sym_err_n / (iTransmission * nSymbols);
     % Per-dimensional symbol error rate per subchannel
     ser_n_bar = ser_n / 2;
-    
+
     % Preliminary results
     numErrs   = sum(sym_err_n);
     numDmtSym = iTransmission * nSymbols;
-    
+
     fprintf('%12g|\t', mean(ser_n_bar));
     fprintf('%12g|\t', numErrs);
     fprintf('%12g|\n', numDmtSym);
-    
-    
+
+
 end
 
 %% Constellation plot for debugging

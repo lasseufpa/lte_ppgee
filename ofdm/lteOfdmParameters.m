@@ -54,6 +54,7 @@ params.nUsedSubcarriers = nRBs * 12; % Used subcarriers
 params.BW               = W;         % Bandwidth
 params.fs               = fs;        % Sampling Frequency
 params.N                = N;         % FFT size
+params.nRBs             = nRBs;      % Number of Resource Blocks
 params.nu               = nu;        % Normal CP
 params.nu_first         = nu_first;  % 1st CP
 

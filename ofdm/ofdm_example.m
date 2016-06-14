@@ -34,6 +34,7 @@ maxNumOfdmSym = 1e12;
 [ lte ] = lteOfdmParameters( lteChoice );
 N       = lte.N;
 N_used  = lte.nUsedSubcarriers;
+nRBs    = lte.nRBs;
 nu      = lte.nu;
 Fs      = lte.fs;
 
@@ -98,16 +99,17 @@ FEQ = 1 ./ (H_freq .* phaseShift);
 
 gn = (abs(H).^2) / N0_over_2;
 
-%% Bit load and
+%% Bit load per Resource Block and per Subchanne;
 
-% Vector of bits per dimension in each subchannel (not each subchannel is
-% two-dimensional) and all subchannels are loaded with the same number of
-% bits.
-bn_bar = log2(subchanOrder) * ones(N_used,1);
-% Vector of bits per subchannel
-bn = 2*bn_bar;
+% Vector of bits per subchannel in each RB (bits per complex dimension)
+b_nRb = log2(subchanOrder) * ones(nRBs, 1);
 
-%% Energy load
+% Obtain the bit loading vectors:
+% bn        -> Bits per complex subchannel
+% bn_bar    -> Bits per real dimension of each subchannel
+[bn, bn_bar] = bitloadResourceBlock( b_nRb );
+
+%% Energy load per subchannel
 
 % 1) What is the budget of energy available for each OFDM symbol? Ex
 % 2) How many subchannels are effectively loaded with energy? N_used

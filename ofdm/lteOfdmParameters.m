@@ -46,8 +46,8 @@ end
 normalCp = 4.68e-6;
 biggerCp = 5.2e-6;
 
-nu     = round(normalCp * fs); % Normal CP
-nu_ext = round(biggerCp * fs); % Extended CP
+nu       = round(normalCp * fs); % Normal CP
+nu_first = round(biggerCp * fs); % 1st CP (slightly longer)
 
 %% Output parameters
 params.nUsedSubcarriers = nRBs * 12; % Used subcarriers
@@ -55,7 +55,7 @@ params.BW               = W;         % Bandwidth
 params.fs               = fs;        % Sampling Frequency
 params.N                = N;         % FFT size
 params.nu               = nu;        % Normal CP
-params.nu_ext           = nu_ext;    % Extended CP
+params.nu_first         = nu_first;  % 1st CP
 
 end
 

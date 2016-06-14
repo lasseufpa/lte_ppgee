@@ -26,7 +26,7 @@ subchanOrder = 16;       % Modulation order adopted for all subchannels
 %   Note: LTE allows 4-QAM, 16-QAM and 64-QAM
 % Monte-Carlo Parameters
 maxNumErrs   = 1e5;
-maxNumDmtSym = 1e12;
+maxNumOfdmSym = 1e12;
 
 %% Derived computations:
 
@@ -49,8 +49,8 @@ nDim      = 2*(N + nu);     % Total number of real dimensions per OFDM
 % symbol
 Ts        = 1 / Fs;
 Tsym      = (N + nu) * Ts;  % Symbol Period
-Rsym      = 1 / Tsym;       % DMT Symbol rate (real dimensions per sec)
-Ex        = Px * Tsym;      % Average DMT symbol energy
+Rsym      = 1 / Tsym;       % OFDM Symbol rate (real dimensions per sec)
+Ex        = Px * Tsym;      % Average OFDM symbol energy
 Ex_bar    = Ex / nDim;      % Energy per real dimension
 % Note the degrees of freedom in the cyclic prefix are taken into account
 % when computing the number of dimensions in which the transmit energy is
@@ -158,25 +158,26 @@ gap_db = 10*log10(gap);
 
 fprintf('Gap to capacity:        \t %g db\n', gap_db)
 
-% Number of bits per two-dimension (complex sample)
+% Total number of bits per two-dimension (complex sample), i.e. the
+% spectral effiency:
 rho = (1/(nDim/2))*(sum(bn));
 fprintf('Spectral efficiency:    \t %g bits/2-dimensions\n', rho)
-% For gap=0 and N->+infty, this should be the channel capacity per real
-% dimension.
+% For gap -> 0 and N -> +infty, this should be the channel capacity per
+% real dimension.
 
 % Corresponding multi-channel SNR:
-SNRdmt    = gap*(2^rho - 1);
-SNRdmt_db = 10*log10(SNRdmt);
-% SNRdmt is the SNR that reflects the achieved bit-rate considering the
-% given gap to capacity. For a gap of 0, SNRdmt approaches the channel
+SNRofdm    = gap*(2^rho - 1);
+SNRofdm_db = 10*log10(SNRofdm);
+% SNRofdm is the SNR that reflects the achieved bit-rate considering the
+% given gap to capacity. For a gap of 0, SNRofdm approaches the channel
 % capacity as N (FFT size) goes to infinity.
-fprintf('Multi-channel SNR (SNRdmt):\t %g dB\n', SNRdmt_db)
+fprintf('Multi-channel SNR (SNRofdm):\t %g dB\n', SNRofdm_db)
 
 % Bit-rate
 Rbit = rho * Fs; % (bits/2-Dim) * (2-Dim/sec) = bits/sec
-% This should be equivalent to "Fs * log2(1 + SNRdmt/gap)"
+% This should be equivalent to "Fs * log2(1 + SNRofdm/gap)"
 % Capacity
-c = Fs * log2(1 + SNRdmt);
+c = Fs * log2(1 + SNRofdm);
 fprintf('Bit rate:               \t %g mbps\n', Rbit/1e6);
 fprintf('Capacity:               \t %g mbps\n', c/1e6);
 
@@ -194,6 +195,13 @@ fprintf('Approximate NNUB Pe per dimension: %g\n', ...
 %% Expected EVM
 
 expectedEVM = 1/sqrt(mean(SNR_n));
+% Note, it can be shown that
+%
+%   mean(SNR_n) = (En_bar * norm(p)^2) / N0_over_2,
+%
+% where the energy per dimension in each subchannel (En_bar) is constant
+% due to the flat energy load. Furthermore, En_bar is given by the
+% computation in the "Energy load" section.
 
 fprintf('Expected EVM:\t                %g %%rms\n', 100 * expectedEVM);
 
@@ -247,7 +255,7 @@ tx_symbols = zeros(N_used, nSymbols);
 rx_symbols = zeros(N_used, nSymbols);
 sym_err_n  = zeros(N_used, 1);
 
-numErrs = 0; numDmtSym = 0;
+numErrs = 0; numOfdmSym = 0;
 
 % Sys Objects
 BitError = comm.ErrorRate;
@@ -264,13 +272,13 @@ end
 fprintf('RMS EVM     |\t');
 fprintf('Pe_bar      |\t');
 fprintf('nErrors     |\t');
-fprintf('nDMTSymbols |\t\n');
+fprintf('OFDMSymbols |\t\n');
 
 %% Iterative Transmissions
 
 iTransmission = 0;
 
-while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
+while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     iTransmission = iTransmission + 1;
 
     % Random Symbol generation
@@ -384,11 +392,11 @@ while ((numErrs < maxNumErrs) && (numDmtSym < maxNumDmtSym))
 
     % Preliminary results
     numErrs   = sum(sym_err_n);
-    numDmtSym = iTransmission * nSymbols;
+    numOfdmSym = iTransmission * nSymbols;
 
     fprintf('%12g|\t', mean(ser_n_bar));
     fprintf('%12g|\t', numErrs);
-    fprintf('%12g|\n', numDmtSym);
+    fprintf('%12g|\n', numOfdmSym);
 
 
 end

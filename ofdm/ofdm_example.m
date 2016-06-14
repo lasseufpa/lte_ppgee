@@ -209,39 +209,40 @@ fprintf('Expected EVM:\t                %g %%rms\n', 100 * expectedEVM);
 
 %% Modulators
 
-% Modulation orders per subchannel
-modOrder = 2.^bn;
+% Modulation orders per resource block
+modOrder = 2.^b_nRb;
 % Unique modulation orders of the two-dimensional subchannels:
 twoDim_const_orders = unique(modOrder(modOrder~=1));
 
-%Preallocate modems
-modulator = cell(length(modOrder), 1);
-demodulator = cell(length(modOrder), 1);
+% Preallocate unique modems
+modulator = cell(length(twoDim_const_orders), 1);
+demodulator = cell(length(twoDim_const_orders), 1);
 
-% Configure 2-dimensional modems for each distinct bit loading:
-for i = 1:length(twoDim_const_orders)
-    M = twoDim_const_orders(i);
+% Configure two-dimensional modems for each distinct bit load:
+for iModem = 1:length(twoDim_const_orders)
+    M = twoDim_const_orders(iModem); % Modulation order
 
-    modulator{i} = modem.qammod('M', M, 'SymbolOrder', 'Gray');
-    demodulator{i} = modem.qamdemod('M', M, 'SymbolOrder', 'Gray');
+    % Modulator/Demodulator Objects:
+    modulator{iModem}   = modem.qammod('M', M, 'SymbolOrder', 'Gray');
+    demodulator{iModem} = modem.qamdemod('M', M, 'SymbolOrder', 'Gray');
 end
 
-%% Look-up table for each subchannel indicating the corresponding modem
+%% Look-up table for each RB indicating the corresponding modem
 
-modem_n = zeros(N_used, 1);
+modem_n = zeros(nRBs, 1);
 
-for k = 1:N_used
+for k = 1:nRBs
     iModem = find(twoDim_const_orders == modOrder(k));
     if (iModem)
         modem_n(k) = iModem;
     end
 end
 
-%% Energy loading (constellation scaling factors)
+%% Energy loading (constellation scaling factors) per RB
 
-Scale_n = zeros(N_used, 1);
+Scale_n = zeros(nRBs, 1);
 
-for k = 1:N_used
+for k = 1:nRBs
     Scale_n(k) = modnorm(...
         modulator{modem_n(k)}.constellation,...
         'avpow', En(k));
@@ -284,16 +285,26 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     iTransmission = iTransmission + 1;
 
     % Random Symbol generation
-    for i = 1:N_used
-        tx_symbols(i, :) = randi(modOrder(i), 1, nSymbols) - 1;
+    % Iterate over Resource Blocks
+    for iRB = 1:nRBs
+        iRE = 12*(iRB-1) + 1:12*iRB;
+        tx_symbols(iRE, :) = ...
+            randi(modOrder(iRB), 12, nSymbols) - 1;
     end
 
     %% Constellation Encoding
-    for i = 1:N_used
-        k = used_tones(i);
-        if (modem_n(i) > 0)
-            X(k, :) = Scale_n(i) * ...
-                modulator{modem_n(i)}.modulate(tx_symbols(i, :));
+
+    % Iterate over Resource Blocks
+    for iRB = 1:nRBs
+        % Find:
+        iRE     = 12*(iRB-1) + 1:12*iRB; % Resource Element Index
+        k       = used_tones(iRE);       % Actual subchannel indexes
+        tx_data = tx_symbols(iRE, :);    % Corresponding transmit data
+        iModem  = modem_n(iRB);          % Modem used for the RB
+
+        % Modulate and scale the transmit data
+        if (modem_n(iRB) > 0)
+            X(k, :) = Scale_n(iRB) * modulator{iModem}.modulate(tx_data);
         end
     end
 
@@ -377,13 +388,21 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     %% Constellation decoding (decision)
 
-    for i = 1:N_used
-        k = used_tones(i);
-        if (modem_n(i) > 0)
-            rx_symbols(i, :) = demodulator{modem_n(i)}.demodulate(...
-                (1/Scale_n(i)) * Z(k, :));
+    for iRB = 1:nRBs
+        % Find:
+        iRE        = 12*(iRB-1) + 1:12*iRB;     % Resource Element Index
+        k          = used_tones(iRE);           % Actual subchannel indexes
+        Z_unscaled = (1/Scale_n(iRB)) *Z(k, :); % Unscaled received signal
+        iModem     = modem_n(iRB);              % Modem used for the RB
+
+        % Demodulate unscaled symbols
+        if (iModem > 0)
+            rx_symbols(iRE, :) = ...
+                demodulator{iModem}.demodulate(Z_unscaled);
         end
     end
+
+    %% Error performance evaluation
 
     % Symbol error count
     sym_err_n = sym_err_n + symerr(tx_symbols, rx_symbols, 'row-wise');

@@ -23,6 +23,7 @@ N0_over_2  = 1e-14;     % Noise PSD (W/Hz/dim) and variance per dimension
 delta_f    = 15e3;      % Subchannel bandwidth
 nSymbols   = 1e3;       % Number of OFDM symbols per transmission iteration
 subchanOrder = 16;      % Modulation order adopted for all subchannels
+nLayers      = 1;       % Number of transmit layers
 %   Note: LTE allows 4-QAM, 16-QAM and 64-QAM
 % Monte-Carlo Parameters
 maxNumErrs   = 1e5;
@@ -241,9 +242,10 @@ end
 fprintf('\n---------------------- Monte Carlo --------------------- \n\n');
 
 % Preallocate
-X          = zeros(N, nSymbols);
-tx_symbols = zeros(N_used, nSymbols);
-rx_symbols = zeros(N_used, nSymbols);
+X          = zeros(N, nSymbols, nLayers);
+Z          = zeros(N, nSymbols, nLayers);
+tx_symbols = zeros(N_used, nSymbols, nLayers);
+rx_symbols = zeros(N_used, nSymbols, nLayers);
 sym_err_n  = zeros(N_used, 1);
 
 numErrs = 0; numOfdmSym = 0;
@@ -276,8 +278,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     % Iterate over Resource Blocks
     for iRB = 1:nRBs
         iRE = 12*(iRB-1) + 1:12*iRB;
-        tx_symbols(iRE, :) = ...
-            randi(modOrder(iRB), 12, nSymbols) - 1;
+        tx_symbols(iRE, :, :) = ...
+            randi(modOrder(iRB), 12, nSymbols, nLayers) - 1;
     end
 
     %% Constellation Encoding
@@ -287,12 +289,15 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         % Find:
         iRE     = 12*(iRB-1) + 1:12*iRB; % Resource Element Index
         k       = used_tones(iRE);       % Actual subchannel indexes
-        tx_data = tx_symbols(iRE, :);    % Corresponding transmit data
+        tx_data = tx_symbols(iRE, :, :); % Corresponding transmit data
         iModem  = modem_n(iRB);          % Modem used for the RB
 
         % Modulate and scale the transmit data
         if (modem_n(iRB) > 0)
-            X(k, :) = Scale_n(iRB) * modulator{iModem}.modulate(tx_data);
+            for iLayer = 1:nLayers
+                X(k, :, iLayer) = Scale_n(iRB) * ...
+                    modulator{iModem}.modulate(tx_data(:,:,iLayer));
+            end
         end
     end
 
@@ -302,11 +307,13 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     %% Cyclic extension
 
-    x_ext = [x(N-nu+1:N, :); x];
+    x_ext = [x(N-nu+1:N, :, :); x];
 
     %% Parallel to serial
+    % Serialize the IFFT samples
 
-    u = x_ext(:);
+    u = reshape(x_ext, (N+nu)*nSymbols, nLayers);
+    % Note: should be a matrix with dimensions nSamples x nPorts
 
     if (debug && debug_tx_energy)
         % Note: "u" should become samples leaving the DAC. In that case,
@@ -327,11 +334,12 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     end
 
     %% Channel
-    y = conv(u, p);
+    y = conv2(u, p);
 
     %% Noise
 
-    nn = sqrt(N0_over_2) * (randn(length(y),1) + 1j*randn(length(y),1));
+    nn = sqrt(N0_over_2) * (randn(length(y), nLayers) + ...
+        1j*randn(length(y), nLayers));
 
     % Add noise
     y = y + nn;
@@ -346,20 +354,20 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     if (debug && debug_psd)
         step(SpecAnalyzer, y);
     end
-    %% Synchronization
+    %% Timing Synchronization
     % Note: synchronization introduces a phase shift that should be taken
     % into account in the FEQ.
 
     nRxSamples = (N+nu)*nSymbols;
-    y_sync     = y((n0 + 1):(n0 + nRxSamples));
+    y_sync     = y((n0 + 1):(n0 + nRxSamples), :);
 
     %% Serial to Parallel
 
-    y_sliced = reshape(y_sync, N + nu, nSymbols);
+    y_sliced = reshape(y_sync, N + nu, nSymbols, nLayers);
 
     %% Extension removal
 
-    y_no_ext = y_sliced(nu + 1:end, :);
+    y_no_ext = y_sliced(nu + 1:end, :, :);
 
     %% Regular Demodulation (without decision feedback)
 
@@ -367,7 +375,9 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     Y = (1/sqrt(N)) * fft(y_no_ext, N); % Orthonormal FFT
 
     % FEQ - One-tap Frequency Equalizer
-    Z = diag(FEQ) * Y;
+    for iLayer = 1:nLayers
+        Z(:,:,iLayer) = diag(FEQ) * Y(:, :, iLayer);
+    end
 
     %% EVM
     RMSEVM = step(EVM, X(used_tones,:), Z(used_tones, :));
@@ -380,28 +390,33 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         % Find:
         iRE        = 12*(iRB-1) + 1:12*iRB;     % Resource Element Index
         k          = used_tones(iRE);           % Actual subchannel indexes
-        Z_unscaled = (1/Scale_n(iRB)) *Z(k, :); % Unscaled received signal
-        iModem     = modem_n(iRB);              % Modem used for the RB
+        Z_unscaled = (1/Scale_n(iRB)) * Z(k, :, :); % Unscaled Rx Symbols
+        iModem     = modem_n(iRB);                  % Modem used for the RB
 
         % Demodulate unscaled symbols
         if (iModem > 0)
-            rx_symbols(iRE, :) = ...
-                demodulator{iModem}.demodulate(Z_unscaled);
+            for iLayer = 1:nLayers
+                rx_symbols(iRE, :, iLayer) = ...
+                  demodulator{iModem}.demodulate(Z_unscaled(:, :, iLayer));
+            end
         end
     end
 
     %% Error performance evaluation
 
     % Symbol error count
-    sym_err_n = sym_err_n + symerr(tx_symbols, rx_symbols, 'row-wise');
+    for iLayer = 1:nLayers
+        sym_err_n = sym_err_n + symerr(tx_symbols(:,:,iLayer), ...
+            rx_symbols(:,:,iLayer), 'row-wise');
+    end
     % Symbol error rate per subchannel
-    ser_n     = sym_err_n / (iTransmission * nSymbols);
+    ser_n     = sym_err_n / (iTransmission * nSymbols * nLayers);
     % Per-dimensional symbol error rate per subchannel
     ser_n_bar = ser_n / 2;
 
     % Preliminary results
     numErrs   = sum(sym_err_n);
-    numOfdmSym = iTransmission * nSymbols;
+    numOfdmSym = iTransmission * (nSymbols * nLayers);
 
     fprintf('%12g|\t', mean(ser_n_bar));
     fprintf('%12g|\t', numErrs);

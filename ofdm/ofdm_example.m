@@ -323,6 +323,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         end
     end
 
+    %% Insertion of Reference Signals
+
     %% MIMO Precoding
 
     %% Modulation
@@ -395,10 +397,15 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     y_no_ext = y_sliced(nu + 1:end, :, :);
 
-    %% Regular Demodulation (without decision feedback)
+    %% FFT
 
     % FFT
     Y = (1/sqrt(N)) * fft(y_no_ext, N); % Orthonormal FFT
+
+    %% FEQ Estimation based on Reference Signals
+
+
+    %% Equalization
 
     % FEQ - One-tap Frequency Equalizer
     for iLayer = 1:nLayers
@@ -422,6 +429,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         k          = used_tones(iRE);           % Actual subchannel indexes
         Z_unscaled = (1/Scale_n(iRB)) * Z(k, :, :); % Unscaled Rx Symbols
         iModem     = modem_n(iRB);                  % Modem used for the RB
+
+        % Exclude the indices corresponding to reference signals
 
         % Demodulate unscaled symbols
         if (iModem > 0)

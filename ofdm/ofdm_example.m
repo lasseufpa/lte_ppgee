@@ -315,6 +315,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         end
     end
 
+    %% MIMO Precoding
+
     %% Modulation
 
     x = sqrt(N) * ifft(X, N); % Orthonormal IFFT
@@ -394,6 +396,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     for iLayer = 1:nLayers
         Z(:,:,iLayer) = diag(FEQ) * Y(:, :, iLayer);
     end
+
+    %% MIMO Decoding
 
     %% EVM
     RMSEVM = step(EVM, X(used_tones,:), Z(used_tones, :));

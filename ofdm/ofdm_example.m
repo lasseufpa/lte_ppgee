@@ -58,7 +58,7 @@ Ex_bar    = Ex / nDim;      % Energy per real dimension
 % when computing the number of dimensions in which the transmit energy is
 % distributed.
 
-%% System Objects
+%% Measurement Objects
 
 EVM = comm.EVM;
 EVM.AveragingDimensions = [1 1];
@@ -73,12 +73,26 @@ p = [1];
 H = fft(p, N);
 H = H(:);
 
-% Pulse response length
-Lh = length(p);
-
 % Matched-filter Bound
 SNRmfb = (Ex_bar * norm(p).^2) / N0_over_2;
 fprintf('SNRmfb:    \t %g dB\n\n', 10*log10(SNRmfb))
+
+hChan = comm.MIMOChannel(...
+    'SampleRate',Fs, ...
+    'PathDelays', 0, ...
+    'AveragePathGains', 0, ...
+    'NormalizePathGains', true, ...
+    'FadingDistribution', 'Rayleigh', ...
+    'MaximumDopplerShift', 0, ...
+    'SpatialCorrelation', false, ...
+    'NumTransmitAntennas', nLayers, ...
+    'NumReceiveAntennas', nLayers);
+% Notes:
+% 1) If 'PathDelays' and 'AveragePathGains' consist of a scalar, then we
+% have frequency-flat fading.
+% 2) "'SpatialCorrelation' == false" means that we specify the number of Tx
+% and Rx antennas explicitly, not indirectly through the spatial
+% correlation matrix.
 
 %% 1-tap Frequency Equalizer
 
@@ -237,7 +251,7 @@ for k = 1:nRBs
         'avpow', En(k));
 end
 
-%% Monte-carlo
+%% Monte-carlo Initialization
 
 fprintf('\n---------------------- Monte Carlo --------------------- \n\n');
 
@@ -333,8 +347,9 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         fprintf('%12g|\t',Ex);
     end
 
-    %% Channel
-    y = conv2(u, p);
+    %% MIMO Channel
+
+    y = step(hChan, u);
 
     %% Noise
 
@@ -354,6 +369,7 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     if (debug && debug_psd)
         step(SpecAnalyzer, y);
     end
+
     %% Timing Synchronization
     % Note: synchronization introduces a phase shift that should be taken
     % into account in the FEQ.

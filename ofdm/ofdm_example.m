@@ -1,4 +1,4 @@
-%% Simple OFDM Example
+%% LTE OFDM Simulator
 clearvars, clc
 
 %% Debug levels
@@ -8,6 +8,7 @@ debug_tone          = 16; % Tone whose constellation is debugged
 debug_Pe            = 1;  % Debug error probabilities
 debug_tx_energy     = 0;  % Debug transmit energy
 debug_snr           = 0;  % Debug SNRs
+debug_evm           = 0;  % Debug EVMs
 debug_psd           = 0;  % Debug the Rx signal PSD
 
 %% Parameters
@@ -38,6 +39,9 @@ N_used  = lte.nUsedSubcarriers;
 nRBs    = lte.nRBs;
 nu      = lte.nu;
 Fs      = lte.fs;
+
+% Number of OFDM Symbols per LTE Frame
+nSymbolsPerFrame   = 140;
 
 % Index of the subchannels that should be loaded:
 used_tones = [ 2:(N_used/2), (N - N_used/2):N].';
@@ -256,10 +260,10 @@ end
 fprintf('\n---------------------- Monte Carlo --------------------- \n\n');
 
 % Preallocate
-X          = zeros(N, nSymbols, nLayers);
-Z          = zeros(N, nSymbols, nLayers);
-tx_symbols = zeros(N_used, nSymbols, nLayers);
-rx_symbols = zeros(N_used, nSymbols, nLayers);
+X          = zeros(N, nSymbolsPerFrame, nLayers);
+Z          = zeros(N, nSymbolsPerFrame, nLayers);
+tx_symbols = zeros(N_used, nSymbolsPerFrame, nLayers);
+rx_symbols = zeros(N_used, nSymbolsPerFrame, nLayers);
 sym_err_n  = zeros(N_used, 1);
 
 numErrs = 0; numOfdmSym = 0;
@@ -276,12 +280,16 @@ end
 if (debug && debug_snr)
     fprintf('SNR (Time)  |\t');
 end
-fprintf('RMS EVM     |\t');
-fprintf('Pe_bar      |\t');
-fprintf('nErrors     |\t');
-fprintf('OFDMSymbols |\t\n');
+if (debug && debug_evm)
+    fprintf('RMS EVM     |\t');
+end
+if (debug && debug_Pe)
+    fprintf('Pe_bar      |\t');
+    fprintf('nErrors     |\t');
+    fprintf('OFDMSymbols |\t\n');
+end
 
-%% Iterative Transmissions
+%% Iterative Transmission of LTE Frames
 
 iTransmission = 0;
 
@@ -293,7 +301,7 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     for iRB = 1:nRBs
         iRE = 12*(iRB-1) + 1:12*iRB;
         tx_symbols(iRE, :, :) = ...
-            randi(modOrder(iRB), 12, nSymbols, nLayers) - 1;
+            randi(modOrder(iRB), 12, nSymbolsPerFrame, nLayers) - 1;
     end
 
     %% Constellation Encoding
@@ -328,7 +336,7 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     %% Parallel to serial
     % Serialize the IFFT samples
 
-    u = reshape(x_ext, (N+nu)*nSymbols, nLayers);
+    u = reshape(x_ext, (N+nu)*nSymbolsPerFrame, nLayers);
     % Note: should be a matrix with dimensions nSamples x nPorts
 
     if (debug && debug_tx_energy)
@@ -345,7 +353,7 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         % introduced by the DAC anti-imaging LPF. Both would cancel each
         % other.
         fprintf('%12g|\t', ...
-            tx_total_energy / nSymbols);
+            tx_total_energy / nSymbolsPerFrame);
         fprintf('%12g|\t',Ex);
     end
 
@@ -376,12 +384,12 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     % Note: synchronization introduces a phase shift that should be taken
     % into account in the FEQ.
 
-    nRxSamples = (N+nu)*nSymbols;
+    nRxSamples = (N+nu)*nSymbolsPerFrame;
     y_sync     = y((n0 + 1):(n0 + nRxSamples), :);
 
     %% Serial to Parallel
 
-    y_sliced = reshape(y_sync, N + nu, nSymbols, nLayers);
+    y_sliced = reshape(y_sync, N + nu, nSymbolsPerFrame, nLayers);
 
     %% Extension removal
 
@@ -402,7 +410,9 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     %% EVM
     RMSEVM = step(EVM, X(used_tones,:), Z(used_tones, :));
 
-    fprintf('%12g|\t', RMSEVM);
+    if (debug && debug_evm)
+        fprintf('%12g|\t', RMSEVM);
+    end
 
     %% Constellation decoding (decision)
 
@@ -430,17 +440,19 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
             rx_symbols(:,:,iLayer), 'row-wise');
     end
     % Symbol error rate per subchannel
-    ser_n     = sym_err_n / (iTransmission * nSymbols * nLayers);
+    ser_n     = sym_err_n / (iTransmission * nSymbolsPerFrame * nLayers);
     % Per-dimensional symbol error rate per subchannel
     ser_n_bar = ser_n / 2;
 
     % Preliminary results
     numErrs   = sum(sym_err_n);
-    numOfdmSym = iTransmission * (nSymbols * nLayers);
+    numOfdmSym = iTransmission * (nSymbolsPerFrame * nLayers);
 
-    fprintf('%12g|\t', mean(ser_n_bar));
-    fprintf('%12g|\t', numErrs);
-    fprintf('%12g|\n', numOfdmSym);
+    if (debug && debug_Pe)
+        fprintf('%12g|\t', mean(ser_n_bar));
+        fprintf('%12g|\t', numErrs);
+        fprintf('%12g|\n', numOfdmSym);
+    end
 
 
 end

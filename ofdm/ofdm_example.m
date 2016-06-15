@@ -131,18 +131,6 @@ En = 2*En_bar;
 % Note: the SNR in each subchannel is given by:
 SNR_n = En_bar .* gn(used_tones);
 
-if (debug && debug_snr)
-    figure
-    plot(used_tones, 10*log10(SNR_n))
-    hold on
-    plot(10*log10(SNRmfb) * ones(N, 1), '--r')
-    xlabel('Tone (n)')
-    ylabel('SNR_n (db)')
-    set(gca,'XLim',[1 N]);
-    legend('SNR_n', 'SNRmfb');
-    drawnow
-end
-
 %% Gap to capacity, Multi-channel SNR and Channel Capacity
 
 % With this per-dimensional SNR, we can compute the gap to capacity in each

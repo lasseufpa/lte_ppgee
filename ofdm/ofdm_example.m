@@ -23,7 +23,6 @@ lteChoice  = 5;
 Px         = 1e-3;      % Transmit Power (W)
 N0_over_2  = 1e-14;     % Noise PSD (W/Hz/dim) and variance per dimension
 delta_f    = 15e3;      % Subchannel bandwidth
-nSymbols   = 1e3;       % Number of OFDM symbols per transmission iteration
 subchanOrder = 16;      % Modulation order adopted for all subchannels
 nLayers      = 1;       % Number of transmit layers
 %   Note: LTE allows 4-QAM, 16-QAM and 64-QAM

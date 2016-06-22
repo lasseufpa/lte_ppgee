@@ -1,5 +1,6 @@
 %% LTE OFDM Simulator
 clearvars, clc
+addpath('../lte');
 
 %% Debug levels
 debug               = 1;  % Enable debug information

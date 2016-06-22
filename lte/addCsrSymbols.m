@@ -1,9 +1,9 @@
 function [ X ] = addCsrSymbols(X, toneIndex)
 % CSR Symbols 
 %
-% Two CSR symbols per resource block om OFDM symbols {0, 5, 7, 12} of each
-% subframe. There are 8 CSR symbols per resource block, two in each of
-% these four OFDM symbols.
+% Two CSR symbols per resource block om OFDM symbols {0, 4, 7, 11} (or {1,
+% 5, 8, 12} in MATLAB) of each subframe. There are 8 CSR symbols per
+% resource block, two in each of these four OFDM symbols.
 %
 % Input 
 % X             -> FFT Grid

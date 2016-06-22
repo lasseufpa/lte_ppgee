@@ -421,6 +421,9 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     rxGrid = Y(used_tones, :);
 
+    %% FEQ Estimation based on Reference Signals
+    [ FEQ ] = feqFromCsrSymbols(txGrid, rxGrid);
+
     %% Equalization
 
     % FEQ - One-tap Frequency Equalizer

@@ -296,6 +296,8 @@ iTransmission = 0;
 while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     iTransmission = iTransmission + 1;
 
+    %% User Data
+
     % Random Symbol generation
     % Iterate over Resource Blocks
     for iRB = 1:nRBs
@@ -323,7 +325,9 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         end
     end
 
-    %% Insertion of Reference Signals
+    %% Add CSR Symbols
+
+    [ X ] = addCsrSymbols(X, used_tones);
 
     %% MIMO Precoding
 

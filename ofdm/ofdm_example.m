@@ -496,7 +496,7 @@ if (debug && debug_Pe)
     hold on
     title('Results: Pe per dimension')
     xlabel('Subchannel (n)')
-    ylabel('$\bar{Pe}(n)$')
+    ylabel('$\bar{Pe}(n)$', 'interpreter','latex')
     legend('Measured','Theoretical')
     set(gca,'XLim',[1 N/2+1]);
 end

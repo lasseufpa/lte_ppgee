@@ -38,6 +38,7 @@ maxNumOfdmSym = 1e12;
 N       = lte.N;
 N_used  = lte.nUsedSubcarriers;
 nRBs    = lte.nRBs;
+nREs    = 12 * nRBs;
 nu      = lte.nu;
 Fs      = lte.fs;
 
@@ -261,11 +262,13 @@ end
 fprintf('\n---------------------- Monte Carlo --------------------- \n\n');
 
 % Preallocate
+txGrid     = zeros(nREs, nSymbolsPerFrame, nLayers);
+rxGrid     = zeros(nREs, nSymbolsPerFrame, nLayers);
+rxEqGrid   = zeros(nREs, nSymbolsPerFrame, nLayers);
+tx_data    = zeros(nREs, nSymbolsPerFrame, nLayers);
+rx_data    = zeros(nREs, nSymbolsPerFrame, nLayers);
 X          = zeros(N, nSymbolsPerFrame, nLayers);
-Z          = zeros(N, nSymbolsPerFrame, nLayers);
-tx_symbols = zeros(N_used, nSymbolsPerFrame, nLayers);
-rx_symbols = zeros(N_used, nSymbolsPerFrame, nLayers);
-sym_err_n  = zeros(N_used, 1);
+sym_err_n  = zeros(nREs, 1);
 
 numErrs = 0; numOfdmSym = 0;
 
@@ -303,7 +306,7 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     % Iterate over Resource Blocks
     for iRB = 1:nRBs
         iRE = 12*(iRB-1) + 1:12*iRB;
-        tx_symbols(iRE, :, :) = ...
+        tx_data(iRE, :, :) = ...
             randi(modOrder(iRB), 12, nSymbolsPerFrame, nLayers) - 1;
     end
 
@@ -314,21 +317,26 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
         % Find:
         iRE     = 12*(iRB-1) + 1:12*iRB; % Resource Element Index
         k       = used_tones(iRE);       % Actual subchannel indexes
-        tx_data = tx_symbols(iRE, :, :); % Corresponding transmit data
         iModem  = modem_n(iRB);          % Modem used for the RB
 
         % Modulate and scale the transmit data
         if (modem_n(iRB) > 0)
             for iLayer = 1:nLayers
-                X(k, :, iLayer) = Scale_n(iRB) * ...
-                    modulator{iModem}.modulate(tx_data(:,:,iLayer));
+                txGrid(iRE, :, iLayer) = Scale_n(iRB) * ...
+                    modulator{iModem}.modulate(tx_data(iRE,:,iLayer));
             end
         end
     end
 
     %% Add CSR Symbols
+    [ txGrid ] = addCsrSymbols(txGrid);
 
-    [ X ] = addCsrSymbols(X, used_tones);
+    %% Map Tx Grid into FFT indexes
+    % Generate the "frequency-domain" vectors that should be the input to
+    % the IFFT module. A simple mapping is performed through the "look-up
+    % table" of indexes stored in "used_tones".
+
+    X(used_tones, :, :) = txGrid;
 
     %% MIMO Precoding
 
@@ -407,20 +415,27 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     % FFT
     Y = (1/sqrt(N)) * fft(y_no_ext, N); % Orthonormal FFT
 
-    %% FEQ Estimation based on Reference Signals
+    %% Map FFT to "Rx Grid"
+    % Undo what is done in the "Map Tx Grid into FFT indexes" section. Use
+    % again the look-up table in the "used_tones" vector.
 
+    rxGrid = Y(used_tones, :);
 
     %% Equalization
 
     % FEQ - One-tap Frequency Equalizer
-    for iLayer = 1:nLayers
-        Z(:,:,iLayer) = diag(FEQ) * Y(:, :, iLayer);
+    for iSubframe = 1:10 % For each subframe
+        iSymbol = (iSubframe - 1)*14 + 1:14;
+        for iLayer = 1:nLayers % And for each Layer
+            rxEqGrid(:,iSymbol,iLayer) = diag(FEQ(:,iSubframe)) *...
+                rxGrid(:, iSymbol, iLayer);
+        end
     end
 
     %% MIMO Decoding
 
     %% EVM
-    RMSEVM = step(EVM, X(used_tones,:), Z(used_tones, :));
+    RMSEVM = step(EVM, txGrid, rxEqGrid);
 
     if (debug && debug_evm)
         fprintf('%12g|\t', RMSEVM);
@@ -430,17 +445,19 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     for iRB = 1:nRBs
         % Find:
-        iRE        = 12*(iRB-1) + 1:12*iRB;     % Resource Element Index
-        k          = used_tones(iRE);           % Actual subchannel indexes
-        Z_unscaled = (1/Scale_n(iRB)) * Z(k, :, :); % Unscaled Rx Symbols
-        iModem     = modem_n(iRB);                  % Modem used for the RB
+        % Resource Element Index:
+        iRE        = 12*(iRB-1) + 1:12*iRB;
+        % Unscaled Rx Symbols:
+        Z_unscaled = (1/Scale_n(iRB)) * rxEqGrid(iRE, :, :);
+        % Modem used for the RB:
+        iModem     = modem_n(iRB);
 
         % Exclude the indices corresponding to reference signals
 
         % Demodulate unscaled symbols
         if (iModem > 0)
             for iLayer = 1:nLayers
-                rx_symbols(iRE, :, iLayer) = ...
+                rx_data(iRE, :, iLayer) = ...
                   demodulator{iModem}.demodulate(Z_unscaled(:, :, iLayer));
             end
         end
@@ -450,8 +467,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     % Symbol error count
     for iLayer = 1:nLayers
-        sym_err_n = sym_err_n + symerr(tx_symbols(:,:,iLayer), ...
-            rx_symbols(:,:,iLayer), 'row-wise');
+        sym_err_n = sym_err_n + symerr(tx_data(:,:,iLayer), ...
+            rx_data(:,:,iLayer), 'row-wise');
     end
     % Symbol error rate per subchannel
     ser_n     = sym_err_n / (iTransmission * nSymbolsPerFrame * nLayers);
@@ -475,7 +492,7 @@ end
 if (debug && debug_constellation && modem_n(debug_tone) > 0)
     k = debug_tone;
     figure
-    plot(Z(k, :), 'o')
+    plot(rxEqGrid(k, :), 'o')
     hold on
     plot(Scale_n(k) * ...
         modulator{modem_n(k)}.modulate(0:modOrder(k) - 1),...

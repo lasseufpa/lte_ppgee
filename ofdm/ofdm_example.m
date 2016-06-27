@@ -4,7 +4,7 @@ addpath('../lte');
 
 %% Debug levels
 debug               = 1;  % Enable debug information
-debug_constellation = 0;  % Debug a certain subchannel constellation
+debug_constellation = 1;  % Debug a certain subchannel constellation
 debug_tone          = 16; % Tone whose constellation is debugged
 debug_Pe            = 1;  % Debug error probabilities
 debug_tx_energy     = 0;  % Debug transmit energy
@@ -427,7 +427,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     % FEQ - One-tap Frequency Equalizer
     for iSubframe = 1:10 % For each subframe
-        iSymbol = (iSubframe - 1)*14 + 1:14;
+        tmp_indices = 1:14;
+        iSymbol = (iSubframe - 1)*14 + tmp_indices;
         for iLayer = 1:nLayers % And for each Layer
             rxEqGrid(:,iSymbol,iLayer) = diag(FEQ(:,iSubframe)) *...
                 rxGrid(:, iSymbol, iLayer);

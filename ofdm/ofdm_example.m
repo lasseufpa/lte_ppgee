@@ -41,6 +41,8 @@ nREs    = 12 * nRBs;
 nu      = lte.nu;
 Fs      = lte.fs;
 
+lte.cellid = 29; % allowed 29, 34, 25
+
 % Number of OFDM Symbols per LTE Frame
 nSymbolsPerFrame   = 140;
 
@@ -329,6 +331,9 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     %% Add CSR Symbols
     [ txGrid ] = addCsrSymbols(txGrid);
+    
+    %% Add PSS
+    [ txGrid ] = addPssSymbols(txGrid, lte);
 
     %% Map Tx Grid into FFT indexes
     % Generate the "frequency-domain" vectors that should be the input to

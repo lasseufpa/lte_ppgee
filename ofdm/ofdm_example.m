@@ -334,6 +334,9 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     
     %% Add PSS
     [ txGrid ] = addPssSymbols(txGrid, lte);
+    
+    %% Add SSS
+    [ txGrid ] = addSssSymbols(txGrid, lte);
 
     %% Map Tx Grid into FFT indexes
     % Generate the "frequency-domain" vectors that should be the input to

@@ -491,13 +491,13 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 end
 
 %% Constellation plot for debugging
-if (debug && debug_constellation && modem_n(debug_tone) > 0)
-    k = debug_tone;
+if (debug && debug_constellation)
+    k = debug_tone;    % Tone index to be visualized
+    iRB = floor(k/12); % Corresponding RB
     figure
     plot(rxEqGrid(k, :), 'o')
     hold on
-    plot(Scale_n(k) * ...
-        modulator{modem_n(k)}.modulate(0:modOrder(k) - 1),...
+    plot(Scale_n(iRB) * modulator{modem_n(iRB)}.Constellation,...
         'ro', 'MarkerSize', 8, 'linewidth', 2)
     legend('Rx', 'Tx')
     title(sprintf('Tone: %d', debug_tone));

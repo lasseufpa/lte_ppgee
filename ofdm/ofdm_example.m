@@ -4,7 +4,7 @@ addpath('../lte');
 
 %% Debug levels
 debug               = 1;  % Enable debug information
-debug_constellation = 0;  % Debug a certain subchannel constellation
+debug_constellation = 1;  % Debug a certain subchannel constellation
 debug_tone          = 16; % Tone whose constellation is debugged
 debug_Pe            = 1;  % Debug error probabilities
 debug_tx_energy     = 0;  % Debug transmit energy
@@ -40,6 +40,8 @@ nRBs    = lte.nRBs;
 nREs    = 12 * nRBs;
 nu      = lte.nu;
 Fs      = lte.fs;
+
+lte.cellid = 29; % allowed 29, 34, 25
 
 % Number of OFDM Symbols per LTE Frame
 nSymbolsPerFrame   = 140;
@@ -329,6 +331,12 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     %% Add CSR Symbols
     [ txGrid ] = addCsrSymbols(txGrid);
+    
+    %% Add PSS
+    [ txGrid ] = addPssSymbols(txGrid, lte);
+    
+    %% Add SSS
+    [ txGrid ] = addSssSymbols(txGrid, lte);
 
     %% Map Tx Grid into FFT indexes
     % Generate the "frequency-domain" vectors that should be the input to
@@ -427,7 +435,8 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
 
     % FEQ - One-tap Frequency Equalizer
     for iSubframe = 1:10 % For each subframe
-        iSymbol = (iSubframe - 1)*14 + 1:14;
+        tmp_indices = 1:14;
+        iSymbol = (iSubframe - 1)*14 + tmp_indices;
         for iLayer = 1:nLayers % And for each Layer
             rxEqGrid(:,iSymbol,iLayer) = diag(FEQ(:,iSubframe)) *...
                 rxGrid(:, iSymbol, iLayer);

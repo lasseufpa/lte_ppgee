@@ -69,8 +69,11 @@ end
 
 H_grid(iReCSRs, :) = H;
 
-L_mov = 4;
-h_mov = (1/L_mov)*ones(L_mov, 1);
+% replicate the tap for three neighbor symbols
+L_mov = 3;
+h_mov = ones(1, L_mov);
+H_grid = filter(h_mov, 1, H_grid);
+
 
 %% Obtain FEQ
 

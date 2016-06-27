@@ -426,13 +426,11 @@ while ((numErrs < maxNumErrs) && (numOfdmSym < maxNumOfdmSym))
     %% Equalization
 
     % FEQ - One-tap Frequency Equalizer
-    for iSubframe = 1:10 % For each subframe
-        iSymbol = (iSubframe - 1)*14 + 1:14;
-        for iLayer = 1:nLayers % And for each Layer
-            rxEqGrid(:,iSymbol,iLayer) = diag(FEQ(:,iSubframe)) *...
-                rxGrid(:, iSymbol, iLayer);
-        end
+    for iLayer = 1:nLayers % And for each Layer
+        rxEqGrid(:,:,iLayer) = FEQ .* ...
+            rxGrid(:, :, iLayer);
     end
+
 
     %% MIMO Decoding
 
